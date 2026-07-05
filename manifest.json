@@ -1,1 +1,10 @@
-{"name":"中油綜合類題庫","short_name":"中油題庫","start_url":"./","display":"standalone","background_color":"#f7f7f8","theme_color":"#0f4c81","lang":"zh-Hant"}
+{
+  "name": "綜合類刷題系統",
+  "short_name": "刷題系統",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#0f5b96",
+  "description": "手機優先的刷題與錯題複習系統。",
+  "icons": []
+}
