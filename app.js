@@ -1,11 +1,11 @@
-const APP_VERSION = '4.1.0-1090-complete';
-const STORAGE_KEY = 'cq_study_v3';
+const APP_VERSION = '5.0.0-subject-practice';
+const STORAGE_KEY = 'cq_study_v5';
 let questions = [];
 let view = { route:'home', list:[], index:0, selected:null, submitted:false, showAnswer:false, filter:{} };
 let state = loadState();
 
 function loadState(){
-  const base = { flags:{}, wrong:{}, stats:{}, notes:{}, sessions:[], theme:'light' };
+  const base = { flags:{}, wrong:{}, stats:{}, notes:{}, sessions:[], theme:'light', plan:null }; 
   try { return { ...base, ...(JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}) }; }
   catch { return base; }
 }
@@ -70,14 +70,85 @@ function render(){
   if(view.route==='stats') return renderStats();
   if(view.route==='settings') return renderSettings();
 }
+function uniqueYears(){ return [...new Set(questions.map(q=>String(q.examTitle||q.year)))].sort(); }
+function uniqueSubjects(){ return [...new Set(questions.map(q=>normalizeSubject(q.subject)))].sort((a,b)=>a.localeCompare(b,'zh-Hant')); }
+function countBySubject(subject){ return questions.filter(q=>normalizeSubject(q.subject)===subject).length; }
+function countByYear(year){ return questions.filter(q=>String(q.examTitle||q.year)===String(year)).length; }
+function getPlanFromUI(){
+  const subjects=[...document.querySelectorAll('[name="subjectPick"]:checked')].map(x=>x.value);
+  const years=[...document.querySelectorAll('[name="yearPick"]:checked')].map(x=>x.value);
+  const mode=$('modePick')?.value || 'random';
+  const countRaw=$('countPick')?.value || '20';
+  const count=countRaw==='all' ? 'all' : Math.max(1, parseInt(countRaw,10)||20);
+  return {subjects, years, mode, count};
+}
+function poolFromPlan(plan){
+  let list=questions.filter(q=>{
+    const sub=normalizeSubject(q.subject);
+    const yr=String(q.examTitle||q.year);
+    return (!plan.subjects?.length || plan.subjects.includes(sub)) && (!plan.years?.length || plan.years.includes(yr));
+  });
+  if(plan.mode==='wrong') list=list.filter(isWrong);
+  if(plan.mode==='flag') list=list.filter(isFlag);
+  if(plan.mode==='weak') list=list.filter(q=>recordOf(q).wrong>=2);
+  if(plan.mode==='unseen') list=list.filter(q=>!state.stats[qid(q)]);
+  if(plan.mode==='random' || plan.mode==='wrong' || plan.mode==='flag' || plan.mode==='weak' || plan.mode==='unseen') list=shuffle(list);
+  const count=plan.count==='all' ? list.length : Number(plan.count||20);
+  return list.slice(0, count);
+}
+function planTitle(plan){
+  const s = plan.subjects?.length ? plan.subjects.join('＋') : '全部科目';
+  const y = plan.years?.length ? plan.years.join('、') : '全部年份';
+  const modeMap={random:'隨機', sequential:'順序', wrong:'錯題', flag:'旗標', weak:'錯兩次以上', unseen:'未作答'};
+  return `${s}｜${y}｜${modeMap[plan.mode]||'練習'}`;
+}
+function applyPlanToUI(plan){
+  if(!plan) return;
+  document.querySelectorAll('[name="subjectPick"]').forEach(x=>x.checked=plan.subjects?.includes(x.value));
+  document.querySelectorAll('[name="yearPick"]').forEach(x=>x.checked=plan.years?.includes(x.value));
+  if($('modePick')) $('modePick').value=plan.mode||'random';
+  if($('countPick')) $('countPick').value=String(plan.count||20);
+  updatePracticePreview();
+}
+function updatePracticePreview(){
+  const el=$('practicePreview'); if(!el) return;
+  const plan=getPlanFromUI();
+  const total=poolFromPlan({...plan,count:'all'}).length;
+  const count=plan.count==='all'?total:Math.min(Number(plan.count||20), total);
+  el.innerHTML = `符合條件 <b>${total}</b> 題，本次將練習 <b>${count}</b> 題。`;
+}
 function renderHome(){
   const o=overall();
-  const years=[...new Set(questions.map(q=>q.examTitle||q.year))];
-  const subjects=[...new Set(questions.map(q=>normalizeSubject(q.subject)))];
+  const years=uniqueYears();
+  const subjects=uniqueSubjects();
   screen().innerHTML = `
   <section class="card">
+    <p class="headline">指定科目練習</p>
+    <p class="muted">可複選科目、年份，並指定順序、隨機、錯題、旗標或未作答。</p>
+    <div class="filter-block">
+      <h3>科目</h3>
+      <div class="check-grid">${subjects.map(s=>`<label class="check-card"><input type="checkbox" name="subjectPick" value="${escapeHtml(s)}"><span>${escapeHtml(s)}</span><em>${countBySubject(s)}題</em></label>`).join('')}</div>
+      <div class="mini-actions"><button class="pill" id="subAll">全選科目</button><button class="pill" id="subNone">清除科目</button></div>
+    </div>
+    <div class="filter-block">
+      <h3>年份</h3>
+      <div class="check-grid years">${years.map(y=>`<label class="check-card"><input type="checkbox" name="yearPick" value="${escapeHtml(y)}"><span>${escapeHtml(y)}</span><em>${countByYear(y)}題</em></label>`).join('')}</div>
+      <div class="mini-actions"><button class="pill" id="yearAll">全選年份</button><button class="pill" id="yearNone">清除年份</button></div>
+    </div>
+    <div class="grid two">
+      <label class="field"><span>模式</span><select id="modePick"><option value="random">隨機</option><option value="sequential">順序</option><option value="wrong">只刷錯題</option><option value="flag">只刷旗標</option><option value="weak">錯兩次以上</option><option value="unseen">未作答</option></select></label>
+      <label class="field"><span>題數</span><select id="countPick"><option value="20">20 題</option><option value="50">50 題</option><option value="100">100 題</option><option value="all">全部</option></select></label>
+    </div>
+    <p class="muted" id="practicePreview"></p>
+    <div class="grid two">
+      <button class="btn" id="customStartBtn">開始指定練習</button>
+      <button class="btn secondary" id="savePlanBtn">儲存為常用方案</button>
+    </div>
+    ${state.plan?`<button class="btn secondary full-gap" id="loadPlanBtn">載入常用方案</button>`:''}
+  </section>
+  <section class="card">
     <p class="headline">今天先刷一組</p>
-    <p class="muted">題庫共 ${questions.length} 題；旗標與錯題會永久保存在此瀏覽器。</p>
+    <p class="muted">題庫共 ${questions.length} 題；旗標、錯題與筆記會永久保存在此瀏覽器。</p>
     <div class="grid two">
       <button class="btn" id="dailyBtn">今日 20 題</button>
       <button class="btn secondary" id="allBtn">全部題庫</button>
@@ -89,10 +160,10 @@ function renderHome(){
     <div class="stat"><b>${o.wrongCount}</b><span>錯題</span></div>
   </section>
   <section class="card">
-    <h2>模擬考</h2><div class="pill-row">${years.map(y=>`<button class="pill year" data-year="${y}">${y}</button>`).join('')}</div>
+    <h2>模擬考</h2><div class="pill-row">${years.map(y=>`<button class="pill year" data-year="${escapeHtml(y)}">${escapeHtml(y)}</button>`).join('')}</div>
   </section>
   <section class="card">
-    <h2>依科目刷題</h2><div class="grid two">${subjects.map(s=>`<button class="btn secondary subject" data-subject="${s}">${s}</button>`).join('')}</div>
+    <h2>依科目刷題</h2><div class="grid two">${subjects.map(s=>`<button class="btn secondary subject" data-subject="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>
   </section>
   <section class="card">
     <h2>快速入口</h2>
@@ -103,14 +174,24 @@ function renderHome(){
       <button class="btn secondary" id="weakBtn">錯兩次以上</button>
     </div>
   </section>`;
+  document.querySelectorAll('[name="subjectPick"],[name="yearPick"]').forEach(x=>x.onchange=updatePracticePreview);
+  $('modePick').onchange=updatePracticePreview; $('countPick').onchange=updatePracticePreview;
+  $('subAll').onclick=()=>{ document.querySelectorAll('[name="subjectPick"]').forEach(x=>x.checked=true); updatePracticePreview(); };
+  $('subNone').onclick=()=>{ document.querySelectorAll('[name="subjectPick"]').forEach(x=>x.checked=false); updatePracticePreview(); };
+  $('yearAll').onclick=()=>{ document.querySelectorAll('[name="yearPick"]').forEach(x=>x.checked=true); updatePracticePreview(); };
+  $('yearNone').onclick=()=>{ document.querySelectorAll('[name="yearPick"]').forEach(x=>x.checked=false); updatePracticePreview(); };
+  $('customStartBtn').onclick=()=>{ const plan=getPlanFromUI(); const list=poolFromPlan(plan); if(!list.length){ alert('這個條件沒有題目，請換一個科目、年份或模式。'); return; } startQuiz(list, planTitle(plan)); };
+  $('savePlanBtn').onclick=()=>{ state.plan=getPlanFromUI(); saveState(); alert('已儲存常用方案'); renderHome(); };
+  if($('loadPlanBtn')) $('loadPlanBtn').onclick=()=>applyPlanToUI(state.plan);
+  updatePracticePreview();
   $('dailyBtn').onclick=()=>startQuiz(shuffle(priorityList()).slice(0,20),'今日20題');
   $('allBtn').onclick=()=>startQuiz(questions,'全部題庫');
   $('wrongBtn').onclick=()=>renderList('錯題',questions.filter(isWrong));
   $('flagBtn').onclick=()=>renderList('旗標',questions.filter(isFlag));
   $('searchBtn').onclick=()=>renderSearch();
   $('weakBtn').onclick=()=>startQuiz(questions.filter(q=>recordOf(q).wrong>=2),'錯兩次以上');
-  document.querySelectorAll('.year').forEach(b=>b.onclick=()=>startQuiz(questions.filter(q=>(q.examTitle||q.year)==b.dataset.year), `${b.dataset.year} 模擬考`));
-  document.querySelectorAll('.subject').forEach(b=>b.onclick=()=>startQuiz(questions.filter(q=>normalizeSubject(q.subject)==b.dataset.subject), b.dataset.subject));
+  document.querySelectorAll('.year').forEach(b=>b.onclick=()=>startQuiz(questions.filter(q=>String(q.examTitle||q.year)===String(b.dataset.year)), `${b.dataset.year} 模擬考`));
+  document.querySelectorAll('.subject').forEach(b=>b.onclick=()=>startQuiz(questions.filter(q=>normalizeSubject(q.subject)===b.dataset.subject), b.dataset.subject));
 }
 function priorityList(){
   const wrong = questions.filter(isWrong);

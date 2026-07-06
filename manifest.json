@@ -1,6 +1,6 @@
 {
-  "name": "綜合類刷題系統",
-  "short_name": "刷題系統",
+  "name": "綜合類刷題系統 V5",
+  "short_name": "刷題V5",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f5f6f8",
@@ -16,5 +16,6 @@
       "sizes": "512x512",
       "type": "image/svg+xml"
     }
-  ]
+  ],
+  "description": "支援指定科目、年份、錯題、旗標與 GPT 詳解的手機刷題系統。"
 }
