@@ -1,12 +1,25 @@
-# 綜合類刷題系統 V3
+# 綜合類刷題系統 V4.1
 
-可直接部署到 GitHub Pages。
+GitHub Pages 可直接部署版本。
 
-## 上傳方式
-1. 解壓縮本 ZIP。
-2. 將所有檔案上傳到 GitHub repository 根目錄。
-3. Settings → Pages → Deploy from a branch → main / root。
-4. 手機 Safari 開啟 Pages 網址後，可加入主畫面。
+## 題庫數量
 
-## 學習紀錄
-旗標、錯題、筆記、統計會存在瀏覽器 localStorage。可在「設定」匯出備份。
+- 專業科目：600 題
+- 國文：240 題（110 年公文寫作未納入）
+- 英文：250 題
+- 合計：1090 題
+
+## 使用方式
+
+1. 解壓縮本檔案。
+2. 將所有檔案上傳並覆蓋到 GitHub Repository 根目錄。
+3. 等待 GitHub Pages 部署完成。
+4. 手機開啟網址後，可加入主畫面。
+
+## 功能
+
+- 年份／科目刷題
+- 錯題與旗標保存
+- LocalStorage 永久紀錄
+- GPT 詳解按鈕
+- PWA 離線快取

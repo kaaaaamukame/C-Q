@@ -1,4 +1,4 @@
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '4.1.0-1090-complete';
 const STORAGE_KEY = 'cq_study_v3';
 let questions = [];
 let view = { route:'home', list:[], index:0, selected:null, submitted:false, showAnswer:false, filter:{} };
@@ -134,9 +134,10 @@ function renderQuiz(){
     <div class="toolbar">
       <button class="btn" id="submitBtn" ${view.submitted?'disabled':''}>送出答案</button>
       <button class="btn secondary" id="answerBtn">${view.showAnswer?'隱藏答案':'看答案'}</button>
+      <button class="btn secondary" id="gptBtn">問 GPT 詳解</button>
     </div>
     ${view.submitted?resultHtml(q):''}
-    ${view.showAnswer?`<div class="answer-box"><b>答案：${q.answer}</b><p class="muted">解析：目前題庫未附逐題解析，可先以正確選項與題目關鍵字回查教材。</p></div>`:''}
+    ${view.showAnswer?`<div class="answer-box"><b>答案：${q.answer}</b><p class="muted">解析：可使用「問 GPT 詳解」按鈕複製題目並開啟 ChatGPT。</p></div>`:''}
   </section>
   <section class="card">
     <h3>我的筆記</h3>
@@ -150,6 +151,7 @@ function renderQuiz(){
   document.querySelectorAll('.option').forEach(btn=>btn.onclick=()=>{ if(view.submitted)return; view.selected=btn.dataset.key; renderQuiz(); });
   $('submitBtn').onclick=submitAnswer;
   $('answerBtn').onclick=()=>{ view.showAnswer=!view.showAnswer; renderQuiz(); };
+  $('gptBtn').onclick=()=>askGPT(q);
   $('flagBtnQ').onclick=()=>{ state.flags[qid(q)] ? delete state.flags[qid(q)] : state.flags[qid(q)] = Date.now(); saveState(); renderQuiz(); };
   $('noteArea').oninput=e=>{ state.notes[qid(q)]=e.target.value; saveState(); };
   $('prevBtn').onclick=()=>{ if(view.index>0){ view.index--; resetQState(); renderQuiz(); } };
@@ -180,7 +182,7 @@ function renderList(title,list){
 }
 function renderSearch(){
   view.route='search';
-  screen().innerHTML=`<section class="card"><h2>搜尋題目</h2><input class="search" id="kw" placeholder="輸入關鍵字，例如：油槽、品牌、發票" autofocus></section><section class="card" id="results"><p class="muted">請輸入關鍵字。</p></section>`;
+  screen().innerHTML=`<section class="card"><h2>搜尋題目</h2><input class="search" id="kw" placeholder="輸入關鍵字，例如：成語、關雎、recognition、油槽" autofocus></section><section class="card" id="results"><p class="muted">請輸入關鍵字。</p></section>`;
   $('kw').oninput=e=>{
     const k=e.target.value.trim(); const res=$('results');
     if(!k){res.innerHTML='<p class="muted">請輸入關鍵字。</p>';return;}
@@ -209,5 +211,30 @@ function importData(e){
   reader.onload=()=>{ try{ state=JSON.parse(reader.result); saveState(); alert('匯入完成'); renderSettings(); }catch{ alert('檔案格式不正確'); } };
   reader.readAsText(file);
 }
+
+function buildGPTPrompt(q){
+  const opts = Object.entries(q.options||{}).map(([k,v])=>`${k}. ${v}`).join('\n');
+  return `請用考試詳解方式解釋這題。\n\n科目：${normalizeSubject(q.subject)}\n年份：${q.year}\n題號：${q.number}\n題型：${q.type||''}\n\n題目：\n${q.question}\n\n選項：\n${opts}\n\n正確答案：${q.answer}\n\n請回答：\n1. 為什麼正解對？\n2. 其他選項為什麼錯？\n3. 這題考點是什麼？\n4. 給我一句好記法。`;
+}
+async function askGPT(q){
+  const prompt = buildGPTPrompt(q);
+  try{
+    await navigator.clipboard.writeText(prompt);
+    alert('已複製題目詳解提示詞。接著會開啟 ChatGPT，請貼上送出。');
+  }catch(e){
+    promptFallback(prompt);
+    return;
+  }
+  window.open('https://chat.openai.com/', '_blank');
+}
+function promptFallback(prompt){
+  const w = window.open('', '_blank');
+  if(w){
+    w.document.write('<pre style="white-space:pre-wrap;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:16px">'+escapeHtml(prompt)+'</pre>');
+  }else{
+    alert(prompt);
+  }
+}
+
 function escapeHtml(s=''){ return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 init();
